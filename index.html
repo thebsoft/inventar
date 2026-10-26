@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inventar</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<style>
+:root{--bg:#f4f4f6;--card:#fff;--tx:#111;--mut:#666;--bd:#ddd;--ac:#0a6cff;--red:#ffc7ce;--redtx:#9c0006;--ok:#c6efce}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111;--card:#1d1d20;--tx:#eee;--mut:#999;--bd:#333;--red:#5a1a20;--redtx:#ffb3ba;--ok:#1d4a2a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px -apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+.w{max-width:640px;margin:0 auto;padding:12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px}
+button,input{font:inherit}
+button{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:12px 14px;width:100%;margin-top:8px}
+button.s{background:var(--card);color:var(--ac);border:1px solid var(--ac)}
+input{width:100%;padding:12px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx)}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.it{padding:10px;border:1px solid var(--bd);border-radius:10px;margin-top:8px;background:var(--card)}
+.it small{color:var(--mut);display:block}
+.bad{background:var(--red);color:var(--redtx);border-color:var(--red)}
+.good{background:var(--ok)}
+.warn{background:#fff3a0;color:#5a4a00;border-color:#e6d550}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center;z-index:9}
+#modal .card{width:100%;max-width:640px;margin:0;border-radius:16px 16px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+#reader{width:100%}
+h3{margin:0 0 6px}
+.mut{color:var(--mut);font-size:14px}
+</style>
+</head>
+<body>
+<div class="w">
+  <div class="card">
+    <h3>Inventar</h3>
+    <div class="mut" id="status">Încarcă fișierul Inventar1.xlsx</div>
+    <input type="file" id="file" accept=".xlsx" style="margin-top:8px">
+  </div>
+
+  <div class="card" id="scanCard" style="display:none">
+    <button class="s" id="btnPhoto">📸 Rezervă: poză în loc de scanare live</button>
+    <input type="file" id="photo" accept="image/*" capture="environment" style="display:none">
+    <div id="tmpScan" style="display:none"></div>
+    <button id="btnScan">📷 Scanează live</button>
+    <div id="readerBox" style="display:none"><video id="vid" playsinline muted autoplay style="width:100%;border-radius:10px;background:#000;max-height:50vh;object-fit:cover"></video><div class="mut" style="margin:6px 0">Ține codul de bare orizontal, la 15–25 cm, bine luminat, și așteaptă să facă focus.</div><button class="s" id="btnStop">Oprește camera</button></div>
+    <div class="row" style="margin-top:8px">
+      <input id="manual" inputmode="numeric" placeholder="sau scrie codul manual">
+      <button style="margin:0;flex:0 0 90px" id="btnManual">Caută</button>
+    </div>
+    <div id="results"></div>
+  </div>
+
+  <div class="card" id="listCard" style="display:none">
+    <h3>Progres: <span id="prog"></span></h3>
+    <input id="filter" placeholder="Filtrează în listă (cod / articol)">
+    <div id="list"></div>
+    <button id="btnExport">💾 Salvează / exportă Excel</button>
+    <button class="s" id="btnReset">Șterge progresul salvat în telefon</button>
+  </div>
+</div>
+
+<div id="modal"><div class="card">
+  <h3 id="mTitle"></h3>
+  <div class="mut" id="mInfo"></div>
+  <div id="mGrp" style="font-weight:600;margin-top:4px"></div>
+  <label class="mut" style="display:block;margin-top:10px">Stoc fizic</label>
+  <input id="mVal" type="number" inputmode="decimal" step="any">
+  <button id="mSave">Salvează</button>
+  <button class="s" id="mCancel">Anulează</button>
+</div></div>
+
+<script>
+// Diferenta = stoc curent - stoc fizic  (pentru fizic - curent schimbă în false)
+const CURENT_MINUS_FIZIC = false;
+
+let wb, ws, rows = [], cols = {}, fname = 'Inventar1.xlsx', current = null, scanner = null;
+const $ = id => document.getElementById(id);
+const norm = v => {
+  if(v && typeof v==='object'){
+    if(v.richText) v = v.richText.map(t=>t.text).join('');
+    else if('result' in v) v = v.result;
+    else if('text' in v) v = v.text;
+    else if(v instanceof Date) v = v.toISOString();
+  }
+  return String(v ?? '').replace(/[\s\u00a0]+/g,' ').trim();
+};
+const hk = v => norm(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+const KEY = 'inv_progress_v1';
+
+function store(){ try{ const o={}; rows.forEach(r=>{ if(r.fizic!==null) o[r.n]=r.fizic; }); localStorage.setItem(KEY,JSON.stringify(o)); }catch(e){} }
+function restore(){ try{ return JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){ return {}; } }
+
+$('file').onchange = async e => {
+  const f = e.target.files[0]; if(!f) return;
+  fname = f.name;
+  try{
+    wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await f.arrayBuffer());
+    ws = wb.worksheets[0];
+    // găsește rândul de antet
+    let hr = 0;
+    for(let r=1;r<=Math.min(ws.rowCount,30);r++){
+      ws.getRow(r).eachCell({includeEmpty:false},c=>{ if(hk(c.value)==='codintern') hr=r; });
+      if(hr) break;
+    }
+    if(!hr){
+      const seen = [];
+      for(let r=1;r<=Math.min(ws.rowCount,6);r++) ws.getRow(r).eachCell(c=>seen.push(norm(c.value)));
+      throw new Error('Nu găsesc coloana CodIntern. Foaia "'+ws.name+'", primele celule: '+seen.slice(0,12).join(' | '));
+    }
+    cols = {};
+    ws.getRow(hr).eachCell((c,i)=>{
+      const t = hk(c.value);
+      if(t==='codintern') cols.cod=i;
+      else if(t.startsWith('codextern')) cols.ext=i;
+      else if(t==='articol') cols.art=i;
+      else if(t.startsWith('stoccurent')) cols.cur=i;
+      else if(t==='stocfizic') cols.fiz=i;
+      else if(t.startsWith('diferen')) cols.dif=i;
+      else if(t.startsWith('nr')) cols.nr=i;
+    });
+    for(const k of ['cod','cur','fiz','dif']) if(!cols[k]) throw new Error('Lipsește coloana: '+k);
+    rows = [];
+    const saved = restore();
+    for(let r=hr+1;r<=ws.rowCount;r++){
+      const row = ws.getRow(r);
+      const cod = norm(row.getCell(cols.cod).value);
+      if(!cod) continue;
+      const cv = row.getCell(cols.cur).value;
+      const cur = Number(cv && typeof cv==='object' && 'result' in cv ? cv.result : cv) || 0;
+      let fz = row.getCell(cols.fiz).value;
+      if(fz && typeof fz==='object' && 'result' in fz) fz = fz.result;
+      fz = (fz===null||fz===''||fz===undefined) ? null : Number(fz);
+      if(fz===null && saved[r]!==undefined) fz = saved[r];
+      rows.push({n:r, cod, ext: cols.ext?norm(row.getCell(cols.ext).value):'', art: cols.art?norm(row.getCell(cols.art).value):'',
+                 nr: cols.nr?norm(row.getCell(cols.nr).value):'', cur, fizic:fz});
+    }
+    rows.forEach(applyRow);
+    $('status').textContent = `${fname}: ${rows.length} poziții încărcate`;
+    $('scanCard').style.display = $('listCard').style.display = 'block';
+    renderList();
+  }catch(err){ $('status').textContent = 'Eroare: '+err.message; }
+};
+
+function applyRow(r){
+  const row = ws.getRow(r.n);
+  const fc = row.getCell(cols.fiz), dc = row.getCell(cols.dif);
+  if(r.fizic===null){ fc.value=null; dc.value=null; setStyle(dc,{fill:{type:'pattern',pattern:'none'}}); return; }
+  fc.value = r.fizic;
+  const d = Math.round((CURENT_MINUS_FIZIC ? r.cur - r.fizic : r.fizic - r.cur)*1e6)/1e6;
+  dc.value = d;
+  setStyle(dc, {
+    fill:{type:'pattern',pattern:'solid',fgColor:{argb:fillOf(r)},bgColor:{argb:fillOf(r)}},
+    font:{color:{argb:'FF000000'}},
+    numFmt:'0.##'
+  });
+}
+// fiecare celulă primește propriul stil (stilurile din ExcelJS sunt altfel partajate între celule)
+function setStyle(c, patch){
+  const b = JSON.parse(JSON.stringify(c.style || {}));
+  const o = {...b, ...patch};
+  if(patch.font) o.font = {...(b.font||{}), ...patch.font};
+  c.style = o;
+}
+// stoc cu minus (fizic < curent) = roșu, cu plus (fizic > curent) = galben, egal = verde
+function statusOf(r){
+  if(r.fizic===null) return null;
+  const x = Math.round((r.fizic - r.cur)*1e6)/1e6;
+  return x<0 ? 'minus' : x>0 ? 'plus' : 'zero';
+}
+function fillOf(r){ return {minus:'FFFF9999', plus:'FFFFFF66', zero:'FF92D050'}[statusOf(r)]; }
+const diff = r => r.fizic===null ? null : Math.round((CURENT_MINUS_FIZIC ? r.cur-r.fizic : r.fizic-r.cur)*1e6)/1e6;
+
+function find(code){
+  code = norm(code); if(!code) return [];
+  const cands = [code];
+  if(/^\d+$/.test(code)){
+    cands.push(code.replace(/^0+/,''));
+    if(code.length===13) cands.push(code.slice(0,12), code.slice(0,12).replace(/^0+/,''));
+    if(code.length===8||code.length===12||code.length===14) cands.push(code.slice(0,-1));
+  }
+  for(const c of cands){
+    const m = rows.filter(r=>r.cod===c);
+    if(m.length) return m;
+  }
+  for(const c of cands){
+    const m = rows.filter(r=>r.ext && r.ext.toLowerCase()===c.toLowerCase());
+    if(m.length) return m;
+  }
+  return [];
+}
+
+function itemHTML(r, i){
+  const d = diff(r);
+  const st = statusOf(r);
+  const cls = st===null ? '' : (st==='minus' ? 'bad' : st==='plus' ? 'warn' : 'good');
+  return `<div class="it ${cls}" data-n="${r.n}"><b>${r.art||r.cod}</b>
+    <small>Rând ${r.n}${r.nr?' · Nr.crt '+r.nr:''} · ${r.cod}${r.ext?' · '+r.ext:''}</small>
+    <small>Stoc curent: ${r.cur} · Fizic: ${r.fizic===null?'—':r.fizic} · Diferență: ${d===null?'—':d}</small></div>`;
+}
+
+function showResults(code){
+  const m = find(code);
+  const box = $('results');
+  if(!m.length){ box.innerHTML = `<div class="it bad">Cod negăsit: ${norm(code)}</div>`; return; }
+  if(m.length===1){ box.innerHTML=''; openModal(m[0]); return; }
+  box.innerHTML = `<div class="mut" style="margin-top:8px">${m.length} poziții pentru acest cod — alege rândul:</div>` + m.map(itemHTML).join('');
+  box.querySelectorAll('.it').forEach(el=>el.onclick=()=>{ openModal(rows.find(r=>r.n==el.dataset.n)); });
+}
+
+let curGroup = [];
+function openModal(r){
+  current = r;
+  curGroup = rows.filter(x=>x.cod===r.cod);
+  const gi = curGroup.indexOf(r);
+  const multi = curGroup.length>1;
+  $('mSave').textContent = multi ? 'Salvează și treci la poziția următoare' : 'Salvează';
+  $('mCancel').textContent = multi ? 'Oprește (alt cod)' : 'Anulează';
+  $('mGrp').textContent = multi ? `Poziția ${gi+1} din ${curGroup.length} cu acest cod` : '';
+  $('mTitle').textContent = r.art || r.cod;
+  $('mInfo').textContent = `Rând ${r.n} · ${r.cod} · Stoc curent: ${r.cur}`;
+  $('mVal').value = r.fizic===null ? '' : r.fizic;
+  $('modal').style.display='flex';
+  setTimeout(()=>$('mVal').focus(),100);
+}
+$('mCancel').onclick = ()=>{ $('modal').style.display='none'; if(liveMode) startScan(); };
+$('mSave').onclick = ()=>{
+  const v = $('mVal').value;
+  if(v===''){ return; }
+  current.fizic = Number(v);
+  applyRow(current); store(); renderList();
+  const gi = curGroup.indexOf(current);
+  let next = null;
+  for(let k=1;k<curGroup.length;k++){
+    const c = curGroup[(gi+k)%curGroup.length];
+    if(c.fizic===null){ next=c; break; }
+  }
+  if(next){ $('results').innerHTML = curGroup.map(itemHTML).join(''); openModal(next); return; }
+  $('modal').style.display='none';
+  $('results').innerHTML = curGroup.length>1 ? curGroup.map(itemHTML).join('') : itemHTML(current);
+  $('manual').value='';
+  if(liveMode) startScan();
+};
+
+function renderList(){
+  const f = $('filter').value.toLowerCase();
+  const done = rows.filter(r=>r.fizic!==null).length;
+  $('prog').textContent = `${done}/${rows.length} inventariate`;
+  $('list').innerHTML = rows.filter(r=>!f || (r.cod+r.ext+r.art).toLowerCase().includes(f)).map(itemHTML).join('');
+  $('list').querySelectorAll('.it').forEach(el=>el.onclick=()=>openModal(rows.find(r=>r.n==el.dataset.n)));
+}
+$('filter').oninput = renderList;
+
+$('btnManual').onclick = ()=>showResults($('manual').value);
+$('manual').onkeydown = e=>{ if(e.key==='Enter') showResults($('manual').value); };
+
+const EAN_CFG = ()=>({formatsToSupport:[Html5QrcodeSupportedFormats.EAN_13], verbose:false});
+function ean13ok(c){
+  if(!/^\d{13}$/.test(c)) return false;
+  let s=0; for(let i=0;i<12;i++) s += (+c[i])*(i%2?3:1);
+  return (10 - s%10)%10 === +c[12];
+}
+async function decodePhoto(file){
+  const bmp = await createImageBitmap(file);
+  const W = bmp.width, H = bmp.height;
+  const wins = [];
+  for(const f of [1, .6, .4]){
+    const step = f===1 ? 1 : f*0.5;
+    for(let y=0; y<=1-f+1e-6; y+=step) for(let x=0; x<=1-f+1e-6; x+=step) wins.push([x,y,f]);
+  }
+  const s = new Html5Qrcode('tmpScan', EAN_CFG());
+  let fallback = null, i = 0;
+  for(const [x,y,f] of wins){
+    i++;
+    $('results').innerHTML = `<div class="it">Caut codul în poză... ${i}/${wins.length}</div>`;
+    const cw = Math.round(W*f), ch = Math.round(H*f);
+    const sc = Math.min(2.5, Math.max(1, 900/cw));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(cw*sc); cv.height = Math.round(ch*sc);
+    cv.getContext('2d').drawImage(bmp, Math.round(W*x), Math.round(H*y), cw, ch, 0, 0, cv.width, cv.height);
+    const blob = await new Promise(r=>cv.toBlob(r,'image/png'));
+    try{
+      const code = await s.scanFile(new File([blob],'t.png',{type:'image/png'}), false);
+      if(ean13ok(code)){
+        if(find(code).length){ try{s.clear();}catch(_){} return code; }
+        if(!fallback) fallback = code;
+      }
+    }catch(_){}
+    await new Promise(r=>setTimeout(r,0));
+  }
+  try{s.clear();}catch(_){}
+  if(fallback) return fallback;
+  throw new Error('not found');
+}
+$('btnPhoto').onclick = ()=>$('photo').click();
+$('photo').onchange = async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  $('results').innerHTML = '<div class="it">Citesc codul din poză...</div>';
+  try{
+    const res = await decodePhoto(f);
+    showResults(res);
+  }catch(err){
+    $('results').innerHTML = '<div class="it bad">Nu am putut citi codul. Fotografiază mai de aproape, drept, cu lumină bună și codul pe toată lățimea pozei, sau scrie-l manual.</div>';
+  }
+  e.target.value = '';
+};
+
+let liveMode=false, scanning=false, busy=false, audioCtx=null;
+function initAudio(){
+  try{ audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+       if(audioCtx.state==='suspended') audioCtx.resume(); }catch(e){}
+}
+function beep(ok){
+  try{
+    initAudio();
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type='square'; o.frequency.value = ok?1800:300; g.gain.value=0.25;
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + (ok?0.15:0.4));
+  }catch(e){}
+  try{ if(navigator.vibrate) navigator.vibrate(ok?80:200); }catch(e){}
+}
+function onRead(txt){
+  if(busy) return;
+  const found = find(txt).length>0;
+  if(!ean13ok(txt) && !found) return;      // ignoră citiri invalide
+  busy = true;
+  beep(found);
+  stopScan();
+  showResults(txt);
+  if(!found) setTimeout(()=>{ if(liveMode) startScan(); }, 1500);
+}
+$('btnScan').onclick = ()=>{ liveMode=true; initAudio(); startScan(); };
+let stream=null, timer=null, zreader=null;
+const work = document.createElement('canvas');
+function getReader(){
+  if(zreader) return zreader;
+  const h = new Map();
+  h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.CODE_128]);
+  h.set(ZXing.DecodeHintType.TRY_HARDER,true);
+  zreader = new ZXing.MultiFormatReader(); zreader.setHints(h);
+  return zreader;
+}
+function tryDecode(cv){
+  try{
+    const src = new ZXing.HTMLCanvasElementLuminanceSource(cv);
+    return getReader().decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(src))).getText();
+  }catch(e){ return null; }
+}
+async function startScan(){
+  if(scanning) return;
+  scanning=true; busy=false;
+  $('readerBox').style.display='block';
+  try{
+    if(!window.ZXing) throw new Error('biblioteca de scanare nu s-a încărcat');
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+    const v = $('vid'); v.srcObject = stream; await v.play();
+    try{
+      const tr = stream.getVideoTracks()[0], caps = tr.getCapabilities ? tr.getCapabilities() : {};
+      if(caps.focusMode && caps.focusMode.includes('continuous')) await tr.applyConstraints({advanced:[{focusMode:'continuous'}]});
+    }catch(e){}
+    scanLoop();
+  }catch(err){
+    stopScan(); liveMode=false;
+    $('results').innerHTML = `<div class="it bad">Camera live nu poate porni (${err}). Dacă pagina rulează în claude.ai, camera live nu este permisă acolo: găzduiește fișierul pe o adresă https proprie sau folosește căutarea manuală.</div>`;
+  }
+}
+function scanLoop(){
+  if(!scanning || busy) return;
+  const v = $('vid');
+  if(v.videoWidth){
+    const W=v.videoWidth, H=v.videoHeight;
+    // zone: tot cadrul, banda de mijloc, centru îngust (fără micșorare inutilă)
+    for(const [x,y,w,h] of [[0,.2,1,.6],[0,0,1,1],[.1,.3,.8,.4]]){
+      const sw=Math.round(W*w), sh=Math.round(H*h), sc=Math.min(1,1600/sw);
+      work.width=Math.round(sw*sc); work.height=Math.round(sh*sc);
+      work.getContext('2d').drawImage(v, Math.round(W*x), Math.round(H*y), sw, sh, 0, 0, work.width, work.height);
+      const code = tryDecode(work);
+      if(code && (ean13ok(code) || find(code).length)){ onRead(code); return; }
+    }
+  }
+  timer = setTimeout(scanLoop, 60);
+}
+function stopScan(){
+  scanning=false; clearTimeout(timer);
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  try{ $('vid').srcObject=null; }catch(e){}
+  $('readerBox').style.display='none';
+}
+$('btnStop').onclick = ()=>{ liveMode=false; stopScan(); };
+
+$('btnExport').onclick = async ()=>{
+  try{
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const file = new File([blob], fname, {type:blob.type});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file]});   // alege "Salvează în Fișiere"
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = fname;
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+  }catch(err){ if(err.name!=='AbortError') alert('Eroare la export: '+err.message); }
+};
+$('btnReset').onclick = ()=>{ if(confirm('Ștergi progresul salvat în browser? (fișierul Excel rămâne neschimbat)')){ try{localStorage.removeItem(KEY);}catch(e){} } };
+</script>
+</body>
+</html>
