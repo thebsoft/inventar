@@ -8,65 +8,95 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <style>
-:root{--bg:#f4f4f6;--card:#fff;--tx:#111;--mut:#666;--bd:#ddd;--ac:#0a6cff;--red:#ffc7ce;--redtx:#9c0006;--ok:#c6efce}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111;--card:#1d1d20;--tx:#eee;--mut:#999;--bd:#333;--red:#5a1a20;--redtx:#ffb3ba;--ok:#1d4a2a}}
+:root{--bg:#f3f4f7;--card:#fff;--tx:#14161a;--mut:#6b7280;--bd:#e3e6ec;--ac:#2563eb;--lk:#1d4ed8;--red:#fdecec;--redb:#d92d20;--redtx:#912018;--ok:#e9f7ee;--okb:#16a34a;--yl:#fff8db;--ylb:#ca8a04;--sh:0 1px 2px rgba(16,24,40,.06),0 6px 16px rgba(16,24,40,.06)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1013;--card:#171a1f;--tx:#eceef2;--mut:#98a1b0;--bd:#262b33;--lk:#8ab0ff;--red:#2a1517;--redtx:#ffb4ad;--ok:#10251a;--yl:#2a230d}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--tx);font:16px -apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
-.w{max-width:640px;margin:0 auto;padding:12px}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px}
-button,input{font:inherit}
-button{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:12px 14px;width:100%;margin-top:8px}
-button.s{background:var(--card);color:var(--ac);border:1px solid var(--ac)}
-input{width:100%;padding:12px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx)}
-.row{display:flex;gap:8px}.row>*{flex:1}
-.it{padding:10px;border:1px solid var(--bd);border-radius:10px;margin-top:8px;background:var(--card)}
-.it small{color:var(--mut);display:block}
-.bad{background:var(--red);color:var(--redtx);border-color:var(--red)}
-.good{background:var(--ok)}
-.warn{background:#fff3a0;color:#5a4a00;border-color:#e6d550}
-#modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center;z-index:9}
-#modal .card{width:100%;max-width:640px;margin:0;border-radius:16px 16px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
-#reader{width:100%}
-h3{margin:0 0 6px}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,system-ui,sans-serif;-webkit-text-size-adjust:100%}
+.top{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--bd);padding:calc(10px + env(safe-area-inset-top,0px)) 20px 12px}
+.top>div{max-width:640px;margin:0 auto}
+.brand{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:19px}
+.pr{height:6px;border-radius:3px;background:var(--bd);margin:10px 0 6px;overflow:hidden}
+#pbar{height:100%;width:0;background:var(--okb);transition:width .3s}
+.w{max-width:640px;margin:0 auto;padding:20px 20px calc(96px + env(safe-area-inset-bottom,0px))}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:20px;margin-bottom:16px;box-shadow:var(--sh)}
+h2{margin:0 0 4px;font-size:18px}h3{margin:0 0 6px}
 .mut{color:var(--mut);font-size:14px}
+button,input{font:inherit}
+button{background:var(--ac);color:#fff;border:0;border-radius:12px;padding:14px 16px;width:100%;margin-top:12px;font-weight:600}
+button:active{opacity:.85}
+button.s{background:transparent;color:var(--lk);border:1px solid var(--bd)}
+input{width:100%;padding:14px;border:1px solid var(--bd);border-radius:12px;background:var(--bg);color:var(--tx);margin-top:12px}
+input[type=file]{padding:10px}
+.row{display:flex;gap:10px;align-items:stretch}.row>input{margin-top:0}.row>button{margin:0;width:auto;padding:0 20px}
+.sep{height:1px;background:var(--bd);margin:18px 0}
+.it{padding:14px 16px;border:1px solid var(--bd);border-left:5px solid var(--bd);border-radius:12px;margin-top:10px;background:var(--card)}
+.it b{font-size:16px}.it small{color:var(--mut);display:block;margin-top:3px}
+.bad{background:var(--red);border-left-color:var(--redb);color:var(--redtx)}
+.bad small{color:inherit;opacity:.85}
+.good{background:var(--ok);border-left-color:var(--okb)}
+.warn{background:var(--yl);border-left-color:var(--ylb)}
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;background:var(--card);border-top:1px solid var(--bd);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px))}
+.tabs button{margin:0;background:transparent;color:var(--mut);padding:10px 4px;font-size:13px;border-radius:10px}
+.tabs button.on{color:var(--lk);background:var(--bg)}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center;z-index:9}
+#modal .card{width:100%;max-width:640px;margin:0;border-radius:20px 20px 0 0;padding:24px 20px calc(20px + env(safe-area-inset-bottom,0px))}
+#mVal{font-size:24px;text-align:center;font-weight:600}
 </style>
 </head>
 <body>
+<div class="top"><div>
+  <div class="brand"><span>Inventar</span><span id="saveInfo" class="mut" style="font-weight:400;font-size:13px"></span></div>
+  <div class="pr"><div id="pbar"></div></div>
+  <div class="mut" id="prog">Încarcă un fișier pentru a începe</div>
+</div></div>
+
 <div class="w">
-  <div class="card">
-    <h3>Inventar</h3>
-    <div class="mut" id="status">Încarcă fișierul Inventar1.xlsx</div>
-    <input type="file" id="file" accept=".xlsx" style="margin-top:8px">
+  <div class="card" id="fileCard">
+    <h2>Fișier inventar</h2>
+    <div class="mut" id="status">Alege fișierul .xlsx din Fișiere</div>
+    <input type="file" id="file" accept=".xlsx">
+    <div class="sep"></div>
+    <button id="btnExport">Salvează / exportă Excel</button>
+    <button class="s" id="btnReset">Șterge tot ce e salvat în telefon</button>
+    <div class="mut" style="margin-top:12px">Fiecare cantitate se salvează automat în telefon. Fișierul Excel se actualizează doar la „Salvează / exportă”.</div>
   </div>
 
   <div class="card" id="scanCard" style="display:none">
-    <button class="s" id="btnPhoto">📸 Rezervă: poză în loc de scanare live</button>
+    <h2>Scanare</h2>
+    <button id="btnScan">Scanează cod de bare</button>
+    <div id="readerBox" style="display:none"><video id="vid" playsinline muted autoplay style="width:100%;border-radius:12px;background:#000;max-height:50vh;object-fit:cover;margin-top:12px"></video><div class="mut" style="margin:8px 0 0">Ține codul orizontal, la 15–25 cm, bine luminat.</div><button class="s" id="btnStop">Oprește camera</button></div>
+    <button class="s" id="btnPhoto">Rezervă: poză în loc de scanare live</button>
     <input type="file" id="photo" accept="image/*" capture="environment" style="display:none">
     <div id="tmpScan" style="display:none"></div>
-    <button id="btnScan">📷 Scanează live</button>
-    <div id="readerBox" style="display:none"><video id="vid" playsinline muted autoplay style="width:100%;border-radius:10px;background:#000;max-height:50vh;object-fit:cover"></video><div class="mut" style="margin:6px 0">Ține codul de bare orizontal, la 15–25 cm, bine luminat, și așteaptă să facă focus.</div><button class="s" id="btnStop">Oprește camera</button></div>
-    <div class="row" style="margin-top:8px">
-      <input id="manual" inputmode="numeric" placeholder="sau scrie codul manual">
-      <button style="margin:0;flex:0 0 90px" id="btnManual">Caută</button>
+    <div class="sep"></div>
+    <h2>Căutare</h2>
+    <div class="mut">După denumire, ultimele cifre din cod sau cod complet</div>
+    <div class="row" style="margin-top:12px">
+      <input id="manual" placeholder="ex: 115444 sau ac presa" autocapitalize="none" autocorrect="off">
+      <button id="btnManual">Caută</button>
     </div>
     <div id="results"></div>
   </div>
 
   <div class="card" id="listCard" style="display:none">
-    <h3>Progres: <span id="prog"></span></h3>
-    <input id="filter" placeholder="Filtrează în listă (cod / articol)">
+    <h2>Toate pozițiile</h2>
+    <input id="filter" placeholder="Filtrează după denumire sau cod" autocapitalize="none" autocorrect="off">
     <div id="list"></div>
-    <button id="btnExport">💾 Salvează / exportă Excel</button>
-    <button class="s" id="btnReset">Șterge progresul salvat în telefon</button>
   </div>
 </div>
 
+<nav class="tabs">
+  <button data-t="scan" class="on">Scanare</button>
+  <button data-t="list">Listă</button>
+  <button data-t="file">Fișier</button>
+</nav>
+
 <div id="modal"><div class="card">
-  <h3 id="mTitle"></h3>
+  <h2 id="mTitle"></h2>
   <div class="mut" id="mInfo"></div>
-  <div id="mGrp" style="font-weight:600;margin-top:4px"></div>
-  <label class="mut" style="display:block;margin-top:10px">Stoc fizic</label>
-  <input id="mVal" type="number" inputmode="decimal" step="any">
+  <div id="mGrp" style="font-weight:600;margin-top:6px"></div>
+  <label class="mut" style="display:block;margin-top:16px">Stoc fizic</label>
+  <input id="mVal" type="number" inputmode="decimal" step="any" style="margin-top:6px">
   <button id="mSave">Salvează</button>
   <button class="s" id="mCancel">Anulează</button>
 </div></div>
@@ -89,15 +119,25 @@ const norm = v => {
 const hk = v => norm(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
 const KEY = 'inv_progress_v1';
 
-function store(){ try{ const o={}; rows.forEach(r=>{ if(r.fizic!==null) o[r.n]=r.fizic; }); localStorage.setItem(KEY,JSON.stringify(o)); }catch(e){} }
+function store(){
+  try{ const o={}; rows.forEach(r=>{ if(r.fizic!==null) o[r.n]=r.fizic; }); localStorage.setItem(KEY,JSON.stringify(o)); }catch(e){}
+  $('saveInfo').textContent = '✓ salvat ' + new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
 function restore(){ try{ return JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){ return {}; } }
 
 $('file').onchange = async e => {
   const f = e.target.files[0]; if(!f) return;
-  fname = f.name;
+  const buf = await f.arrayBuffer();
+  const prev = await idbGet();
+  if(!prev || prev.name!==f.name || prev.size!==buf.byteLength){ try{ localStorage.removeItem(KEY); }catch(_){} }
+  await idbSet({name:f.name, size:buf.byteLength, buf});
+  await loadBuffer(buf, f.name);
+};
+async function loadBuffer(buf, name){
+  fname = name;
   try{
     wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(await f.arrayBuffer());
+    await wb.xlsx.load(buf);
     ws = wb.worksheets[0];
     // găsește rândul de antet
     let hr = 0;
@@ -139,7 +179,7 @@ $('file').onchange = async e => {
     }
     rows.forEach(applyRow);
     $('status').textContent = `${fname}: ${rows.length} poziții încărcate`;
-    $('scanCard').style.display = $('listCard').style.display = 'block';
+    showTab('scan');
     renderList();
   }catch(err){ $('status').textContent = 'Eroare: '+err.message; }
 };
@@ -245,16 +285,50 @@ $('mSave').onclick = ()=>{
 };
 
 function renderList(){
-  const f = $('filter').value.toLowerCase();
+  const f = $('filter').value;
   const done = rows.filter(r=>r.fizic!==null).length;
-  $('prog').textContent = `${done}/${rows.length} inventariate`;
-  $('list').innerHTML = rows.filter(r=>!f || (r.cod+r.ext+r.art).toLowerCase().includes(f)).map(itemHTML).join('');
+  $('prog').textContent = `${done} din ${rows.length} poziții inventariate`;
+  $('pbar').style.width = (rows.length ? done*100/rows.length : 0) + '%';
+  $('list').innerHTML = rows.filter(r=>matchRow(r,f)).map(itemHTML).join('');
   $('list').querySelectorAll('.it').forEach(el=>el.onclick=()=>openModal(rows.find(r=>r.n==el.dataset.n)));
 }
 $('filter').oninput = renderList;
 
-$('btnManual').onclick = ()=>showResults($('manual').value);
-$('manual').onkeydown = e=>{ if(e.key==='Enter') showResults($('manual').value); };
+const strip = t=>String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+function matchRow(r,q){
+  const s = strip(q).trim(); if(!s) return true;
+  if(/^\d+$/.test(s) && r.cod.endsWith(s)) return true;
+  const h = strip(r.art+' '+r.ext+' '+r.cod);
+  return s.split(/\s+/).every(w=>h.includes(w));
+}
+function doSearch(){
+  const q = $('manual').value.trim(); if(!q) return;
+  let m = [];
+  if(/^\d+$/.test(q)){ m = rows.filter(r=>r.cod.endsWith(q)); if(!m.length) m = find(q); }
+  if(!m.length) m = rows.filter(r=>matchRow(r,q));
+  const box = $('results');
+  if(!m.length){ box.innerHTML = `<div class="it bad">Nicio poziție găsită pentru „${q}”</div>`; return; }
+  if(m.length===1){ box.innerHTML=''; openModal(m[0]); return; }
+  box.innerHTML = `<div class="mut" style="margin-top:12px">${m.length} poziții găsite — alege rândul${m.length>30?' (primele 30)':''}:</div>` + m.slice(0,30).map(itemHTML).join('');
+  box.querySelectorAll('.it').forEach(el=>el.onclick=()=>openModal(rows.find(r=>r.n==el.dataset.n)));
+}
+$('btnManual').onclick = doSearch;
+$('manual').onkeydown = e=>{ if(e.key==='Enter') doSearch(); };
+$('mVal').onkeydown = e=>{ if(e.key==='Enter') $('mSave').click(); };
+
+function showTab(n){
+  if(!rows.length) n='file';
+  for(const [k,id] of [['scan','scanCard'],['list','listCard'],['file','fileCard']]) $(id).style.display = k===n ? 'block' : 'none';
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on', b.dataset.t===n));
+  if(n!=='scan' && typeof stopScan==='function'){ liveMode=false; stopScan(); }
+}
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.t));
+
+// sesiune salvată în telefon (IndexedDB): fișierul încărcat rămâne disponibil după închiderea paginii
+function idb(){ return new Promise((res,rej)=>{ const q=indexedDB.open('inv',1); q.onupgradeneeded=()=>q.result.createObjectStore('s'); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); }
+async function idbGet(){ try{ const d=await idb(); return await new Promise(r=>{ const q=d.transaction('s').objectStore('s').get('cur'); q.onsuccess=()=>r(q.result); q.onerror=()=>r(null); }); }catch(e){ return null; } }
+async function idbSet(v){ try{ const d=await idb(); await new Promise(r=>{ const t=d.transaction('s','readwrite'); t.objectStore('s').put(v,'cur'); t.oncomplete=r; t.onerror=r; }); }catch(e){} }
+async function idbDel(){ try{ const d=await idb(); await new Promise(r=>{ const t=d.transaction('s','readwrite'); t.objectStore('s').delete('cur'); t.oncomplete=r; t.onerror=r; }); }catch(e){} }
 
 const EAN_CFG = ()=>({formatsToSupport:[Html5QrcodeSupportedFormats.EAN_13], verbose:false});
 function ean13ok(c){
@@ -405,7 +479,12 @@ $('btnExport').onclick = async ()=>{
     }
   }catch(err){ if(err.name!=='AbortError') alert('Eroare la export: '+err.message); }
 };
-$('btnReset').onclick = ()=>{ if(confirm('Ștergi progresul salvat în browser? (fișierul Excel rămâne neschimbat)')){ try{localStorage.removeItem(KEY);}catch(e){} } };
+$('btnReset').onclick = async ()=>{
+  if(!confirm('Ștergi fișierul încărcat și progresul salvat în telefon? Fișierul din Fișiere rămâne neschimbat.')) return;
+  try{ localStorage.removeItem(KEY); }catch(e){}
+  await idbDel(); location.reload();
+};
+(async()=>{ const sv = await idbGet(); if(sv && sv.buf){ $('status').textContent='Reiau sesiunea salvată...'; await loadBuffer(sv.buf, sv.name); } })();
 </script>
 </body>
 </html>
