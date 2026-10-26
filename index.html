@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Inventar</title>
+<title>Inventar Diana Trans</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
@@ -15,8 +15,8 @@ body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,s
 .top{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--bd);padding:calc(10px + env(safe-area-inset-top,0px)) 20px 12px}
 .top>div{max-width:640px;margin:0 auto}
 .brand{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:19px;gap:10px}
-.brand .r{display:flex;align-items:center;gap:10px}
-#btnTop{margin:0;width:auto;padding:8px 16px;font-size:15px;border-radius:10px}
+.tb{display:flex;gap:10px;margin-top:10px}
+.tb button{margin:0;padding:10px;font-size:15px;border-radius:10px}
 .pr{height:6px;border-radius:3px;background:var(--bd);margin:10px 0 6px;overflow:hidden}
 #pbar{height:100%;width:0;background:var(--okb);transition:width .3s}
 .w{max-width:640px;margin:0 auto;padding:20px 20px calc(96px + env(safe-area-inset-bottom,0px))}
@@ -47,7 +47,8 @@ input[type=file]{padding:10px}
 </head>
 <body>
 <div class="top"><div>
-  <div class="brand"><span>Inventar</span><span class="r"><span id="saveInfo" class="mut" style="font-weight:400;font-size:13px"></span><button id="btnTop">Salvează</button></span></div>
+  <div class="brand"><span>Inventar</span><span id="saveInfo" class="mut" style="font-weight:400;font-size:13px"></span></div>
+  <div class="tb"><button id="btnSave">Salvează</button><button class="s" id="btnTop">Exportă Excel</button></div>
   <div class="pr"><div id="pbar"></div></div>
   <div class="mut" id="prog">Încarcă un fișier pentru a începe</div>
 </div></div>
@@ -58,9 +59,9 @@ input[type=file]{padding:10px}
     <div class="mut" id="status">Alege fișierul .xlsx din Fișiere</div>
     <input type="file" id="file" accept=".xlsx">
     <div class="sep"></div>
-    <button id="btnExport">Salvează / exportă Excel</button>
+    <button id="btnExport">Exportă Excel</button>
     <button class="s" id="btnReset">Șterge tot ce e salvat în telefon</button>
-    <div class="mut" style="margin-top:12px">Fiecare cantitate se salvează automat în telefon. Fișierul Excel se actualizează doar la „Salvează / exportă”.</div>
+    <div class="mut" style="margin-top:12px">Fiecare cantitate se salvează automat în telefon. Fișierul Excel se actualizează doar la „Exportă Excel”.</div>
   </div>
 
   <div class="card" id="scanCard" style="display:none">
@@ -94,9 +95,9 @@ input[type=file]{padding:10px}
 </nav>
 
 <div id="askBox" style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:12;padding:20px"><div class="card" style="margin:0;max-width:420px;width:100%">
-  <h2>Salvezi acum?</h2>
+  <h2>Exporți acum?</h2>
   <div class="mut" id="askTxt"></div>
-  <button id="askYes">Salvează acum</button>
+  <button id="askYes">Exportă acum</button>
   <button class="s" id="askNo">Mai târziu</button>
 </div></div>
 
@@ -282,7 +283,7 @@ $('mSave').onclick = ()=>{
   if(v===''){ return; }
   const wasNew = current.fizic===null;
   current.fizic = Number(v);
-  applyRow(current); store(); renderList();
+  applyRow(current); store(); saveSoon(); renderList();
   if(wasNew) sinceExport++;
   const gi = curGroup.indexOf(current);
   let next = null;
@@ -300,11 +301,11 @@ $('mSave').onclick = ()=>{
 
 function askSave(){
   if(liveMode) stopScan();
-  $('askTxt').textContent = `Ai introdus ${sinceExport} poziții noi de la ultimul export. Datele sunt salvate în telefon, dar fișierul Excel se actualizează doar când îl salvezi.`;
+  $('askTxt').textContent = `Ai introdus ${sinceExport} poziții noi de la ultimul export. Datele sunt salvate în telefon, dar fișierul Excel se actualizează doar când îl exporți.`;
   $('askBox').style.display='flex';
 }
 function afterAsk(){ $('askBox').style.display='none'; if(liveMode) startScan(); }
-$('askYes').onclick = async ()=>{ $('askBox').style.display='none'; await doExport(); if(liveMode) startScan(); };
+$('askYes').onclick = async ()=>{ $('askBox').style.display='none'; await saveNow(true); await doExport(); if(liveMode) startScan(); };
 $('askNo').onclick = ()=>{ sinceExport = 0; afterAsk(); };
 
 function renderList(){
@@ -507,6 +508,23 @@ async function doExport(){
 }
 $('btnExport').onclick = doExport;
 $('btnTop').onclick = doExport;
+// SALVARE = în telefon (progres + fișierul de lucru); EXPORT = fișier .xlsx livrat în Fișiere
+async function saveNow(silent){
+  store();
+  try{
+    if(wb){ const buf = await wb.xlsx.writeBuffer(); const cur = await idbGet(); if(cur){ cur.buf = buf; await idbSet(cur); } }
+  }catch(e){ if(!silent) alert('Eroare la salvare: '+e.message); return false; }
+  return true;
+}
+let saveT = null;
+function saveSoon(){ clearTimeout(saveT); saveT = setTimeout(()=>saveNow(true), 1500); }
+$('btnSave').onclick = async ()=>{
+  if(!wb){ alert('Încarcă mai întâi fișierul Excel.'); return; }
+  const b = $('btnSave'); b.disabled = true;
+  const ok = await saveNow(false);
+  b.textContent = ok ? '✓ Salvat' : 'Salvează'; b.disabled = false;
+  setTimeout(()=>{ b.textContent = 'Salvează'; }, 1500);
+};
 $('btnReset').onclick = async ()=>{
   if(!confirm('Ștergi fișierul încărcat și progresul salvat în telefon? Fișierul din Fișiere rămâne neschimbat.')) return;
   try{ localStorage.removeItem(KEY); }catch(e){}
